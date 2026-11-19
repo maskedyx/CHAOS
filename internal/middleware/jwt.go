@@ -8,12 +8,13 @@ import (
 	"github.com/tiagorlampert/CHAOS/services/auth"
 	"github.com/tiagorlampert/CHAOS/services/user"
 	"net/http"
+	"strings"
 	"time"
 )
 
 const (
 	nameToDisplay   = "chaos"
-	tokenLookup     = "cookie:jwt"
+	tokenLookup     = "header:Authorization,cookie:jwt"
 	tokenHeaderName = "Bearer"
 	authorizedKey   = "authorized"
 )
@@ -58,6 +59,10 @@ func NewJwtMiddleware(
 func (j *JWT) AuthAdmin(c *gin.Context) {
 	claims := jwt.ExtractClaims(c)
 	if claims[jwtUtil.IdentityKey] != jwtUtil.IdentityAdminUser {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin privileges required"})
+			return
+		}
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}

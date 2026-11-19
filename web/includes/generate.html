@@ -39,8 +39,15 @@
                                 <label for="os_target">OS Target *</label>
                                 <select id="os_target" class="form-control" name="os_target" size="0">
                                     {{ range $key, $value := .OSTarget}}
-                                    <option value="{{$key}}">{{$value}}</option>
+                                    <option value="{{$key}}" data-archs="{{range index $.OSArchs $key}}{{.}} {{end}}">{{$value}}</option>
                                     {{- end}}
+                                </select>
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="os_arch">Architecture *</label>
+                                <select id="os_arch" class="form-control" name="os_arch" size="0">
+                                    <option value="amd64">amd64</option>
+                                    <option value="arm64">arm64</option>
                                 </select>
                             </div>
                             <div class="form-group col-md-2">

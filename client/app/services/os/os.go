@@ -10,19 +10,19 @@ const (
 	Unknown OSType = iota
 	Windows
 	Linux
-	//Darwin
+	Darwin
 )
 
 var TargetMap = map[OSType]string{
 	Windows: "Windows",
 	Linux:   "Linux",
-	//Darwin:  "Mac OS",
+	Darwin:  "Mac OS",
 }
 
 var TargetIntMap = map[int]OSType{
 	1: Windows,
 	2: Linux,
-	//3:  Darwin,
+	3: Darwin,
 }
 
 // DetectOS return an int which represent a OS type
@@ -32,8 +32,8 @@ func DetectOS() OSType {
 		return Windows
 	case `linux`:
 		return Linux
-	//case `darwin`:
-	//	return Darwin
+	case `darwin`:
+		return Darwin
 	default:
 		return Unknown
 	}

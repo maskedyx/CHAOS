@@ -6,6 +6,7 @@ import (
 	"github.com/kbinani/screenshot"
 	"github.com/tiagorlampert/CHAOS/client/app/services"
 	"image/png"
+	"runtime"
 )
 
 type Service struct{}
@@ -15,6 +16,10 @@ func NewService() services.Screenshot {
 }
 
 func (s Service) TakeScreenshot() ([]byte, error) {
+	if runtime.GOOS == `darwin` {
+		return captureDarwin()
+	}
+
 	display, err := screenshot.CaptureDisplay(0)
 	if err != nil {
 		return nil, err

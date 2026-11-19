@@ -23,6 +23,8 @@ func (u Service) OpenUrl(url string) error {
 		cmdOut, _ = u.Terminal.Run(fmt.Sprintf("start %s", url))
 	case os.Linux:
 		cmdOut, _ = u.Terminal.Run(fmt.Sprintf("xdg-open %s", url))
+	case os.Darwin:
+		cmdOut, _ = u.Terminal.Run(fmt.Sprintf("open %s", url))
 	default:
 		return services.ErrUnsupportedPlatform
 	}

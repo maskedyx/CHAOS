@@ -7,4 +7,6 @@ var (
 	ErrClientConnectionNotFound = errors.New("no active client connection found")
 	ErrInvalidServerAddress     = errors.New("the server address provided is invalid")
 	ErrInvalidServerPort        = errors.New("the server port provided is invalid")
+	ErrInvalidOSTarget          = errors.New("the OS target provided is invalid")
+	ErrInvalidOSArch            = errors.New("the OS architecture is not supported by the target")
 )

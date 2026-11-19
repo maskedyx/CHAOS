@@ -46,6 +46,7 @@ THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. YOU MAY USE THIS
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Databases](#databases)
+- [REST API](#rest-api)
 - [Video](#video)
 - [Screenshots](#screenshots)
 - [Contributing](#contributing)
@@ -55,21 +56,29 @@ THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. YOU MAY USE THIS
 
 ## Features
 
-| Feature         |  <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white"/>   |  <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black"/> |
-|:----------------|:-------:|:------:|
-| `Reverse Shell` |    X    |    X   |
-| `Download File` |    X    |    X   |
-| `Upload File`   |    X    |    X   |
-| `Delete File`   |    X    |    X   |
-| `Screenshot`    |    X    |    X   |
-| `File Explorer` |    X    |    X   |
-| `Get OS Info`   |    X    |    X   |
-| `Run Hidden`    |    X    |        |
-| `Restart`       |    X    |    X   |
-| `Shutdown`      |    X    |    X   |
-| `Lock screen`   |    X    |        |
-| `Sign out`      |    X    |        |
-| `Open Url`      |    X    |    X   |
+| Feature         |  <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white"/>   |  <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black"/> | <img src="https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white"/> |
+|:----------------|:-------:|:------:|:------:|
+| `Reverse Shell` |    X    |    X   |   X    |
+| `Download File` |    X    |    X   |   X    |
+| `Upload File`   |    X    |    X   |   X    |
+| `Delete File`   |    X    |    X   |   X    |
+| `Screenshot`    |    X    |    X   |   X    |
+| `File Explorer` |    X    |    X   |   X    |
+| `Get OS Info`   |    X    |    X   |   X    |
+| `Run Hidden`    |    X    |        |        |
+| `Restart`       |    X    |    X   |   X    |
+| `Shutdown`      |    X    |    X   |   X    |
+| `Lock screen`   |    X    |        |   X    |
+| `Sign out`      |    X    |        |   X    |
+| `Open Url`      |    X    |    X   |   X    |
+
+macOS clients can be built for both `amd64` (Intel) and `arm64` (Apple Silicon). Builds are unsigned, so on first run either right-click the binary and choose **Open** or remove the quarantine attribute:
+
+```bash
+$ xattr -d com.apple.quarantine <binary>
+```
+
+The agent needs Screen Recording permission for screenshots, and Accessibility/Automation permissions for lock, sign out, restart and shutdown (System Settings → Privacy & Security).
 
 ## Quick start
 
@@ -140,6 +149,66 @@ To connect in a supported database you should set some required environment vari
   * `POSTGRES_PORT` = 5432
   * `POSTGRES_USER` = postgres
   * `POSTGRES_SSL_MODE` = disable/require //optional
+
+## REST API
+
+A JSON API is exposed under `/api/v1` for automation and external integrations. It requires the `admin` user and a bearer token:
+
+```bash
+# Obtain a token
+$ curl -s -X POST http://localhost:8080/api/v1/auth/login \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"admin","password":"admin"}'
+# {"expire":"...","token":"<JWT>"}
+
+# Use it on every other request
+$ curl -s http://localhost:8080/api/v1/devices \
+    -H 'Authorization: Bearer <JWT>'
+```
+
+Devices are identified by their MAC address (`client_id`). The base64 form returned in `address` is also accepted where a `:id` path parameter is used.
+
+| Method | Endpoint | Description |
+|:--|:--|:--|
+| `POST` | `/auth/login` | Authenticate and get a bearer token. |
+| `GET` | `/health` | Health check. |
+| `GET` | `/devices` | List connected devices. |
+| `GET` | `/devices/:id` | Get a single device. |
+| `POST` | `/devices/:id/commands` | Run a command (`{"command":"...","parameter":"..."}`). |
+| `GET` | `/devices/:id/screenshot` | Take a screenshot (PNG). |
+| `GET` | `/devices/:id/explorer?path=` | List a remote directory. |
+| `POST` | `/devices/:id/open-url` | Open a URL (`{"url":"https://..."}`). |
+| `GET` | `/devices/:id/files?path=` | Download a file from the device. |
+| `POST` | `/devices/:id/files` | Upload a multipart `file` (optional `path` destination). |
+| `DELETE` | `/devices/:id/files?path=` | Delete a file on the device. |
+| `GET` | `/targets` | List client build targets and architectures. |
+| `POST` | `/clients` | Build a client (`server_address`, `server_port`, `os_target`, `os_arch`, `filename`, `run_hidden`). |
+| `GET` | `/clients/:filename` | Download a built client. |
+
+Examples:
+
+```bash
+# Run a shell command
+$ curl -s -X POST http://localhost:8080/api/v1/devices/AA:BB:CC:DD:EE:FF/commands \
+    -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \
+    -d '{"command":"whoami"}'
+
+# Download a remote file
+$ curl -s -OJ http://localhost:8080/api/v1/devices/AA:BB:CC:DD:EE:FF/files?path=/home/user/report.pdf \
+    -H 'Authorization: Bearer <JWT>'
+
+# Upload a local file to the device
+$ curl -s -X POST http://localhost:8080/api/v1/devices/AA:BB:CC:DD:EE:FF/files \
+    -H 'Authorization: Bearer <JWT>' \
+    -F file=@./payload.txt -F path=/home/user/payload.txt
+
+# Build a macOS (Apple Silicon) client
+$ curl -s -X POST http://localhost:8080/api/v1/clients \
+    -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \
+    -d '{"os_target":"darwin","os_arch":"arm64","filename":"agent"}'
+```
+
+Building clients runs `go build` on the server, so the Go toolchain must be available. CORS is enabled for browser-based callers.
 
 ## Screenshots
 ![generate](public/generate.png)

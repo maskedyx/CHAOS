@@ -45,10 +45,36 @@ func NewController(
 		UrlService:     urlService,
 	}
 
+	router.Use(apiCorsMiddleware())
 	router.NoRoute(handler.noRouteHandler)
 	router.GET("/health", handler.healthHandler)
 	router.GET("/login", handler.loginHandler)
 	router.POST("/auth", authMiddleware.LoginHandler)
+
+	apiGroup := router.Group("/api/v1")
+	{
+		apiGroup.GET("/health", handler.apiHealthHandler)
+		apiGroup.POST("/auth/login", handler.apiLoginHandler)
+	}
+
+	apiAuthGroup := apiGroup.Group("")
+	apiAuthGroup.Use(authMiddleware.MiddlewareFunc())
+	apiAuthGroup.Use(authMiddleware.AuthAdmin)
+	{
+		apiAuthGroup.GET("/devices", handler.apiGetDevicesHandler)
+		apiAuthGroup.GET("/devices/:id", handler.apiGetDeviceHandler)
+		apiAuthGroup.POST("/devices/:id/commands", handler.apiSendCommandHandler)
+		apiAuthGroup.GET("/devices/:id/screenshot", handler.apiScreenshotHandler)
+		apiAuthGroup.GET("/devices/:id/explorer", handler.apiExplorerHandler)
+		apiAuthGroup.POST("/devices/:id/open-url", handler.apiOpenUrlHandler)
+		apiAuthGroup.GET("/devices/:id/files", handler.apiDownloadFileHandler)
+		apiAuthGroup.POST("/devices/:id/files", handler.apiUploadFileHandler)
+		apiAuthGroup.DELETE("/devices/:id/files", handler.apiDeleteFileHandler)
+
+		apiAuthGroup.GET("/targets", handler.apiListTargetsHandler)
+		apiAuthGroup.POST("/clients", handler.apiBuildClientHandler)
+		apiAuthGroup.GET("/clients/:filename", handler.apiDownloadClientHandler)
+	}
 
 	adminGroup := router.Group("")
 	adminGroup.Use(authMiddleware.MiddlewareFunc())

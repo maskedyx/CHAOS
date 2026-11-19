@@ -29,6 +29,8 @@ func (os OperatingSystemService) Restart() error {
 		os.Terminal.Run("shutdown -r -t 00")
 	case Linux:
 		os.Terminal.Run("reboot")
+	case Darwin:
+		os.Terminal.Run(`osascript -e 'tell application "System Events" to restart'`)
 	default:
 		return services.ErrUnsupportedPlatform
 	}
@@ -42,6 +44,8 @@ func (os OperatingSystemService) Shutdown() error {
 		break
 	case Linux:
 		os.Terminal.Run("poweroff")
+	case Darwin:
+		os.Terminal.Run(`osascript -e 'tell application "System Events" to shut down'`)
 	default:
 		return services.ErrUnsupportedPlatform
 	}
@@ -53,6 +57,8 @@ func (os OperatingSystemService) Lock() error {
 	case Windows:
 		os.Terminal.Run("Rundll32.exe user32.dll,LockWorkStation")
 		break
+	case Darwin:
+		os.Terminal.Run(`osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}'`)
 	default:
 		return services.ErrUnsupportedPlatform
 	}
@@ -64,6 +70,8 @@ func (os OperatingSystemService) SignOut() error {
 	case Windows:
 		os.Terminal.Run("shutdown -L")
 		break
+	case Darwin:
+		os.Terminal.Run(`osascript -e 'tell application "System Events" to log out'`)
 	default:
 		return services.ErrUnsupportedPlatform
 	}

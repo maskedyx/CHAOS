@@ -7,6 +7,7 @@ import (
 	jwtUtil "github.com/tiagorlampert/CHAOS/internal/utils/jwt"
 	"github.com/tiagorlampert/CHAOS/services/user"
 	"net/http"
+	"strings"
 )
 
 type authHandler struct {
@@ -48,11 +49,19 @@ func (a authHandler) authenticatorHandler(c *gin.Context) (interface{}, error) {
 }
 
 func (a authHandler) unauthorizedHandler(c *gin.Context, code int, message string) {
+	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		c.JSON(code, gin.H{"error": message})
+		return
+	}
 	c.HTML(http.StatusUnauthorized, "login.html", gin.H{"unauthorized": true})
 	return
 }
 
 func (a authHandler) logoutResponseHandler(c *gin.Context, code int) {
+	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		c.JSON(http.StatusOK, gin.H{"message": "logged out"})
+		return
+	}
 	c.HTML(http.StatusOK, "login.html", gin.H{"unauthorized": true})
 	return
 }
