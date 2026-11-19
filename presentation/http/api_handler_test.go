@@ -382,6 +382,28 @@ func TestAPIBuildClientNormalizesServerAddress(t *testing.T) {
 	}
 }
 
+func TestAPIBuildClientPassesMaskName(t *testing.T) {
+	clientService := &fakeClientService{buildName: "agent"}
+	router := newTestAPI(t, clientService, &fakeDeviceService{}, &fakeUrlService{})
+
+	response := performRequest(
+		router,
+		http.MethodPost,
+		"/api/v1/clients",
+		adminToken(t),
+		`{"server_address":"127.0.0.1","server_port":"8080","os_target":"linux","run_hidden":true,"mask_name":true}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d. Body: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if !clientService.lastBuild.RunHidden {
+		t.Error("run_hidden was not passed to the build")
+	}
+	if !clientService.lastBuild.MaskName {
+		t.Error("mask_name was not passed to the build")
+	}
+}
+
 func TestAPIBuildClientRejectsInvalidTarget(t *testing.T) {
 	router := newTestAPI(t, &fakeClientService{}, &fakeDeviceService{}, &fakeUrlService{})
 

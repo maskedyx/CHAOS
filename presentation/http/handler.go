@@ -230,6 +230,7 @@ func (h *httpController) generateBinaryPostHandler(c *gin.Context) {
 		OSArch:        req.OSArch,
 		Filename:      req.Filename,
 		RunHidden:     utils.ParseCheckboxBoolean(req.RunHidden),
+		MaskName:      utils.ParseCheckboxBoolean(req.MaskName),
 	})
 	if err != nil {
 		h.Logger.Error(err)

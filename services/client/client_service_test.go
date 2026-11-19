@@ -42,29 +42,52 @@ func TestGetEnvVarBuild(t *testing.T) {
 }
 
 func TestBuildFilename(t *testing.T) {
-	if got := buildFilename(system.Windows, "agent"); got != "agent.exe" {
+	if got := buildFilename(system.Windows, "agent", false); got != "agent.exe" {
 		t.Errorf("buildFilename(Windows) = %q, want %q", got, "agent.exe")
 	}
-	if got := buildFilename(system.Darwin, "agent"); got != "agent" {
+	if got := buildFilename(system.Darwin, "agent", false); got != "agent" {
 		t.Errorf("buildFilename(Darwin) = %q, want %q", got, "agent")
 	}
-	if got := buildFilename(system.Linux, "agent"); got != "agent" {
+	if got := buildFilename(system.Linux, "agent", false); got != "agent" {
 		t.Errorf("buildFilename(Linux) = %q, want %q", got, "agent")
 	}
 }
 
-func TestGetRunHiddenBuildParam(t *testing.T) {
-	if got := getRunHiddenBuildParam(system.Windows, true); got != "-H=windowsgui" {
-		t.Errorf("getRunHiddenBuildParam(Windows, true) = %q, want %q", got, "-H=windowsgui")
+func TestBuildFilenameDefaultsForHiddenClients(t *testing.T) {
+	if got := buildFilename(system.Linux, "", true); got != hiddenLinuxFilename {
+		t.Errorf("buildFilename(Linux, hidden) = %q, want %q", got, hiddenLinuxFilename)
 	}
-	if got := getRunHiddenBuildParam(system.Darwin, true); got != "" {
-		t.Errorf("getRunHiddenBuildParam(Darwin, true) = %q, want an empty string", got)
+	if got := buildFilename(system.Darwin, "", true); got != hiddenMacFilename {
+		t.Errorf("buildFilename(Darwin, hidden) = %q, want %q", got, hiddenMacFilename)
 	}
-	if got := getRunHiddenBuildParam(system.Linux, true); got != "" {
-		t.Errorf("getRunHiddenBuildParam(Linux, true) = %q, want an empty string", got)
+	if got := buildFilename(system.Linux, "", false); got == hiddenLinuxFilename {
+		t.Errorf("buildFilename(Linux, visible) = %q, want a random name", got)
 	}
-	if got := getRunHiddenBuildParam(system.Windows, false); got != "" {
-		t.Errorf("getRunHiddenBuildParam(Windows, false) = %q, want an empty string", got)
+	if got := buildFilename(system.Windows, "", true); !strings.HasSuffix(got, ".exe") || got == ".exe" {
+		t.Errorf("buildFilename(Windows, hidden) = %q, want a random .exe name", got)
+	}
+}
+
+func TestGetBuildFlags(t *testing.T) {
+	tests := []struct {
+		name   string
+		target system.OSType
+		hidden bool
+		mask   bool
+		want   string
+	}{
+		{"windows hidden", system.Windows, true, true, "-H=windowsgui"},
+		{"linux hidden", system.Linux, true, false, "-X 'main.RunHidden=true'"},
+		{"darwin masked", system.Darwin, false, true, "-X 'main.MaskName=true'"},
+		{"linux hidden and masked", system.Linux, true, true, "-X 'main.RunHidden=true' -X 'main.MaskName=true'"},
+		{"windows visible", system.Windows, false, false, ""},
+		{"linux visible", system.Linux, false, false, ""},
+	}
+
+	for _, test := range tests {
+		if got := getBuildFlags(test.target, test.hidden, test.mask); got != test.want {
+			t.Errorf("%s: getBuildFlags() = %q, want %q", test.name, got, test.want)
+		}
 	}
 }
 

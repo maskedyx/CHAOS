@@ -277,6 +277,7 @@ func (h *httpController) apiBuildClientHandler(c *gin.Context) {
 		OSArch:        body.OSArch,
 		Filename:      body.Filename,
 		RunHidden:     body.RunHidden,
+		MaskName:      body.MaskName,
 	})
 	if err != nil {
 		if errors.Is(err, internal.ErrInvalidServerAddress) ||

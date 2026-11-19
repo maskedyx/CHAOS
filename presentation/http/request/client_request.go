@@ -7,4 +7,5 @@ type GenerateClientRequestForm struct {
 	OSArch    string `form:"os_arch"`
 	Filename  string `form:"filename"`
 	RunHidden string `form:"run_hidden"`
+	MaskName  string `form:"mask_name"`
 }

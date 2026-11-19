@@ -21,4 +21,5 @@ type BuildClientAPIRequest struct {
 	OSArch        string `json:"os_arch"`
 	Filename      string `json:"filename"`
 	RunHidden     bool   `json:"run_hidden"`
+	MaskName      bool   `json:"mask_name"`
 }

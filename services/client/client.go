@@ -24,6 +24,7 @@ type BuildClientBinaryInput struct {
 	ServerAddress, ServerPort, Filename string
 	OSArch                              string
 	RunHidden                           bool
+	MaskName                            bool
 	OSTarget                            system.OSType
 }
 

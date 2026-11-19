@@ -26,6 +26,7 @@ async function GenerateBinary() {
     let osArch = document.getElementById('os_arch');
     let filename = document.getElementById('filename');
     let runHidden = document.getElementById('run_hidden');
+    let maskName = document.getElementById('mask_name');
 
     if (!address.value || !osTarget.value) {
         ShowNotification('warning', 'Ops!', 'You should fill all the required fields.');
@@ -39,7 +40,7 @@ async function GenerateBinary() {
         }
     });
 
-    generate(address.value, port.value, osTarget.value, osArch.value, filename.value, runHidden.checked)
+    generate(address.value, port.value, osTarget.value, osArch.value, filename.value, runHidden.checked, maskName.checked)
         .then(response => {
             if (!response.ok) {
                 return response.text().then(err => {
@@ -59,7 +60,7 @@ async function GenerateBinary() {
         });
 }
 
-async function generate(address, port, osTarget, osArch, filename, runHidden) {
+async function generate(address, port, osTarget, osArch, filename, runHidden, maskName) {
     event.preventDefault();
     let formData = new FormData();
     formData.append('address', address);
@@ -68,6 +69,7 @@ async function generate(address, port, osTarget, osArch, filename, runHidden) {
     formData.append('os_arch', osArch);
     formData.append('filename', filename);
     formData.append('run_hidden', runHidden);
+    formData.append('mask_name', maskName);
 
     const url = '/generate';
     const initDetails = {

