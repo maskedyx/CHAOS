@@ -44,6 +44,7 @@ THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. YOU MAY USE THIS
 ## Table of contents
 
 - [Features](#features)
+- [Antivirus false positives](#antivirus-false-positives)
 - [Quick start](#quick-start)
 - [Databases](#databases)
 - [REST API](#rest-api)
@@ -87,6 +88,17 @@ Enabling **Run Hidden/Background** builds the client so it starts without a cons
 
 Remaining ways to spot a masked client: `/proc/<pid>/exe`, `lsof`, listener sockets, and the file on disk.
 
+## Antivirus false positives
+
+Remote administration tools are routinely flagged by heuristics, so generated clients are hardened before they are compiled:
+
+* the sources are copied and their module path is replaced with a random `github.com/<owner>/<repo>` path, so the well-known CHAOS import paths are not embedded in the binary
+* the hidden-mode environment variable is randomized as well
+* Windows clients get a version resource, an icon and an application manifest
+* the build uses `-trimpath`, no VCS stamp and no build ID, and every client gets a random version string
+
+If a scanner still removes the file, exclude the server working directory (or `temp/`) from real-time protection and rebuild, or whitelist the binary after building. For production use, signing the generated binary with your own code-signing certificate removes most false positives.
+
 ## Quick start
 
 Some install options are available:
@@ -107,6 +119,12 @@ $ cd CHAOS/
 
 # Run
 $ PORT=8080 SQLITE_DATABASE=chaos go run cmd/chaos/main.go
+```
+```powershell
+# Run in powershell
+$env:PORT="8080"
+$env:SQLITE_DATABASE="chaos"
+go run cmd/chaos/main.go
 ```
 
 </details>

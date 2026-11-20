@@ -1,0 +1,37 @@
+// Windows resources compiled into the client to make the executable look like a
+// regular application instead of a bare Go binary.
+//
+// Regenerate the .syso after changing this file or the icon:
+//   windres -O coff -i resource.rc -o ../../res_windows_amd64.syso
+//
+// The generated file must stay at client/res_windows_amd64.syso so the Go tool
+// picks it up for windows/amd64 builds only.
+
+1 24 "app.manifest"
+1 ICON "icon.ico"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "System Agent"
+      VALUE "FileDescription", "System Agent"
+      VALUE "FileVersion", "1.0.0.0"
+      VALUE "InternalName", "system-agent"
+      VALUE "LegalCopyright", "Copyright (C) 2026"
+      VALUE "OriginalFilename", "system-agent.exe"
+      VALUE "ProductName", "System Agent"
+      VALUE "ProductVersion", "1.0.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

